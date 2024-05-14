@@ -1,6 +1,41 @@
 ﻿#include <memory>
 #include <iostream>
+#include <list>
+#include <valarray>
 
+typedef struct _Position
+{
+	int x = -1;
+	int y = -1;
+
+	float magnitude() const
+	{
+		return std::sqrt(static_cast<double>(x * x) + static_cast<double>(y * y));
+	}
+}Pos;
+
+bool operator == (Pos a, Pos b)
+{
+	return a.x == b.x && a.y == b.y;
+}
+Pos operator - (Pos a, Pos b)
+{
+	return { a.x - b.x , a.y - b.y};
+}
+
+template <typename T>
+bool contains(const std::list<T>& lst, const T& value) {
+	return std::find(lst.begin(), lst.end(), value) != lst.end();
+}
+
+template <typename T>
+void addUnique(std::list<T>& lst, const T& value) {
+	if (!contains(lst, value)) {
+		lst.push_back(value);
+	} else {
+		std::cout << "Element already exists in the list.\n";
+	}
+}
 
 class Mass {
 public:
@@ -16,9 +51,9 @@ public:
 	status getStatus() const { return s_; }
 
 	bool put(status s) {
-		if (s_ != BLANK) return false;
+		status current = getStatus();
 		s_ = s;
-		return true;
+		return current == BLANK;
 	}
 };
 
@@ -34,6 +69,7 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_NEGA_SCOUT = 1
 	};
 
 	static AI* createAi(type type);
@@ -48,10 +84,21 @@ public:
 	bool think(Board& b);
 };
 
+class AI_nega_scout : public AI {
+private:
+	int evaluate(int limit, int alpha, int beta, Board& board, const std::list<Pos>& blanks, Mass::status current, Pos& best_pos);
+public:
+	AI_nega_scout() {}
+	~AI_nega_scout() {}
+
+	bool think(Board& b);
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
-		// case TYPE_ORDERED:
+	case TYPE_NEGA_SCOUT:
+		return new AI_nega_scout();
 	default:
 		return new AI_ordered();
 		break;
@@ -63,6 +110,7 @@ AI* AI::createAi(type type)
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_nega_scout;
 
 public:
 	enum WINNER {
@@ -73,13 +121,21 @@ public:
 	};
 private:
 	enum {
-		BOARD_SIZE = 3,
+		BOARD_SIZE = 5,
 	};
 	Mass mass_[BOARD_SIZE][BOARD_SIZE];
 
+	std::list<Pos> blanks = std::list<Pos>();
+
 public:
 	Board() {
-		//		mass_[0][0].setStatus(Mass::ENEMY); mass_[0][1].setStatus(Mass::PLAYER); 
+		for (int y = 0; y < BOARD_SIZE; y++) {
+			for (int x = 0; x < BOARD_SIZE; x++) {
+				if (mass_[y][x].getStatus() == Mass::BLANK) {
+					blanks.push_back({x, y});
+				}
+			}
+		}
 	}
 	Board::WINNER calc_result() const
 	{
@@ -135,10 +191,16 @@ public:
 		return DRAW;
 	}
 
-	bool put(int x, int y) {
-		if (x < 0 || BOARD_SIZE <= x ||
-			y < 0 || BOARD_SIZE <= y) return false;// 盤面外
-		return mass_[y][x].put(Mass::PLAYER);
+	bool put(Pos pos, Mass::status mass) {
+		if (pos.x < 0 || BOARD_SIZE <= pos.x ||
+			pos.y < 0 || BOARD_SIZE <= pos.y) return false;// 盤面外
+		if (mass_[pos.y][pos.x].put(mass))
+		{
+			blanks.remove(pos);
+			return true;
+		}
+		addUnique(blanks, pos);
+		return false;
 	}
 
 	void show() const {
@@ -179,18 +241,71 @@ public:
 			std::cout << "＋\n";
 		}
 	}
+
+	std::list<Pos> getBlanks() const
+	{
+		return blanks;
+	}
 };
 
 bool AI_ordered::think(Board& b)
 {
-	for (int y = 0; y < Board::BOARD_SIZE; y++) {
-		for (int x = 0; x < Board::BOARD_SIZE; x++) {
-			if (b.mass_[y][x].put(Mass::ENEMY)) {
-				return true;
-			}
+	std::list<Pos> list = b.getBlanks();
+	if (list.empty()) return false;
+	Pos point = list.front();
+	return b.put(point, Mass::ENEMY);
+}
+
+int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, const std::list<Pos>& blanks, Mass::status current, Pos& best_pos)
+{
+	if (limit-- == 0) return 0;
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	int r = board.calc_result();
+	if (r == current) return +10000;
+	if (r == next) return -10000;
+	if (r == Board::DRAW) return 0;
+	
+	int a = alpha;
+	int b = beta;
+
+	for (Pos blank : blanks)
+	{
+		board.put(blank, current);
+		std::list<Pos> current_list = board.getBlanks();
+		Pos dummy;
+		int score = -evaluate(limit, -b, -a, board, current_list, next, dummy);
+		if (a < score && score < beta && !(blank.x == 0 && blank.y == 0) && limit <= 2)
+		{
+			a = -evaluate(limit, -beta, -score, board, current_list, next, dummy);
 		}
+		board.put(blank, Mass::BLANK);
+		if (a < score)
+		{
+			a = score;
+			best_pos = blank;
+		}
+
+		if (beta <= a)
+		{
+			return a;
+		}
+		b = a + 1;
 	}
-	return false;
+	return a;
+}
+
+
+bool AI_nega_scout::think(Board& b)
+{
+
+	Pos point;
+
+	if (evaluate(5, -10000, 10000, b, b.getBlanks(), Mass::ENEMY, point) <= -9999)
+	{
+		return false;
+	}
+	return b.put(point, Mass::ENEMY);
 }
 
 
@@ -198,7 +313,7 @@ bool AI_ordered::think(Board& b)
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ORDERED;
+	const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
@@ -213,7 +328,7 @@ public:
 	}
 
 	bool put(int x, int y) {
-		bool success = board_.put(x, y);
+		bool success = board_.put({x, y}, Mass::PLAYER);
 		if (success) winner_ = board_.calc_result();
 
 		return success;
@@ -221,6 +336,7 @@ public:
 
 	bool think() {
 		bool success = pAI_->think(board_);
+		std::cout << success << std::endl;
 		if (success) winner_ = board_.calc_result();
 		return success;
 	}
