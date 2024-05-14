@@ -86,6 +86,7 @@ public:
 
 class AI_nega_scout : public AI {
 private:
+	static void order_moves(const std::list<Pos>& moves, std::list<Pos>& ordered_moves);
 	int evaluate(int limit, int alpha, int beta, Board& board, const std::list<Pos>& blanks, Mass::status current, Pos& best_pos);
 public:
 	AI_nega_scout() {}
@@ -242,7 +243,7 @@ public:
 		}
 	}
 
-	std::list<Pos> getBlanks() const
+	std::list<Pos> get_blanks() const
 	{
 		return blanks;
 	}
@@ -250,10 +251,18 @@ public:
 
 bool AI_ordered::think(Board& b)
 {
-	std::list<Pos> list = b.getBlanks();
+	std::list<Pos> list = b.get_blanks();
 	if (list.empty()) return false;
 	Pos point = list.front();
 	return b.put(point, Mass::ENEMY);
+}
+
+void AI_nega_scout::order_moves(const std::list<Pos>& moves, std::list<Pos>& ordered_moves) {
+	ordered_moves = moves;
+	ordered_moves.sort([](const Pos& a, const Pos& b) {
+		Pos center = { Board::BOARD_SIZE / 2, Board::BOARD_SIZE / 2 };
+		return (a - center).magnitude() < (b - center).magnitude();
+	});
 }
 
 int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, const std::list<Pos>& blanks, Mass::status current, Pos& best_pos)
@@ -269,10 +278,13 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, const 
 	int a = alpha;
 	int b = beta;
 
-	for (Pos blank : blanks)
+	std::list<Pos> ordered_moves;
+	order_moves(blanks, ordered_moves);
+
+	for (Pos blank : ordered_moves)
 	{
 		board.put(blank, current);
-		std::list<Pos> current_list = board.getBlanks();
+		std::list<Pos> current_list = board.get_blanks();
 		Pos dummy;
 		int score = -evaluate(limit, -b, -a, board, current_list, next, dummy);
 		if (a < score && score < beta && !(blank.x == 0 && blank.y == 0) && limit <= 2)
@@ -301,7 +313,7 @@ bool AI_nega_scout::think(Board& b)
 
 	Pos point;
 
-	if (evaluate(5, -10000, 10000, b, b.getBlanks(), Mass::ENEMY, point) <= -9999)
+	if (evaluate(5, -10000, 10000, b, b.get_blanks(), Mass::ENEMY, point) <= -9999)
 	{
 		return false;
 	}
