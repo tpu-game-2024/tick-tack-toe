@@ -34,7 +34,7 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
-		TYPE_ALPHA_BETA = 1,
+		TYPE_NEGA_SCOUT = 1,
 	};
 
 	static AI* createAi(type type);
@@ -53,7 +53,7 @@ public:
 class Board
 {
 	friend class AI_ordered;
-	friend class AI_alpha_beta;
+	friend class AI_nega_scout;
 
 public:
 	enum WINNER {
@@ -64,7 +64,7 @@ public:
 	};
 private:
 	enum {
-		BOARD_SIZE = 3,
+		BOARD_SIZE = 5,
 	};
 	Mass mass_[BOARD_SIZE][BOARD_SIZE];
 
@@ -203,7 +203,7 @@ AI* AI::createAi(type type)
 	switch (type)
 	{
 		// case TYPE_ORDERED:
-		case type::TYPE_ALPHA_BETA:
+		case type::TYPE_NEGA_SCOUT:
 			return new AI_nega_scout();
 			break;
 		default:
@@ -390,7 +390,7 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ALPHA_BETA;
+	const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
