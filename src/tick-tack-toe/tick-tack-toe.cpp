@@ -1,5 +1,7 @@
 ﻿#include <memory>
 #include <iostream>
+#include <unordered_map> 
+#include <string> 
 
 
 class Mass {
@@ -34,6 +36,7 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_ALPHA_BETA = 1,
 	};
 
 	static AI* createAi(type type);
@@ -48,21 +51,11 @@ public:
 	bool think(Board& b);
 };
 
-AI* AI::createAi(type type)
-{
-	switch (type) {
-		// case TYPE_ORDERED:
-	default:
-		return new AI_ordered();
-		break;
-	}
-
-	return nullptr;
-}
 
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_alpha_beta;
 
 public:
 	enum WINNER {
@@ -193,12 +186,189 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
+class AI_alpha_beta : public AI
+{
+private:
+	std::unordered_map<std::string, int> evaluationCache;
 
+	int evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_alpha_beta() {}
+	~AI_alpha_beta() {}
+
+	bool find_cache(Board& board, int& score);
+	void rotate90(Mass board[][Board::BOARD_SIZE]);
+	void flip(Mass board[][Board::BOARD_SIZE]);
+	std::string to_string(Mass board[][Board::BOARD_SIZE]);
+
+	bool think(Board& b);
+};
+
+AI* AI::createAi(type type)
+{
+	switch (type)
+	{
+		// case TYPE_ORDERED:
+		case type::TYPE_ALPHA_BETA:
+			return new AI_alpha_beta();
+			break;
+		default:
+			return new AI_ordered();
+			break;
+	}
+
+	return nullptr;
+}
+
+
+void AI_alpha_beta::rotate90(Mass board[][Board::BOARD_SIZE])
+{
+	Mass newBoard[Board::BOARD_SIZE][Board::BOARD_SIZE];
+
+	memcpy((void*)newBoard, (void*)board, sizeof(Mass) * Board::BOARD_SIZE * Board::BOARD_SIZE);
+
+	for (int y = 0; y < Board::BOARD_SIZE; ++y)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE; ++x)
+		{
+			board[y][x] = newBoard[x][Board::BOARD_SIZE - y - 1];
+		}
+	}
+}
+
+void AI_alpha_beta::flip(Mass board[][Board::BOARD_SIZE])
+{
+	for (int y = 0; y < Board::BOARD_SIZE; ++y)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE / 2; ++x)
+		{
+			board[y][x] = board[y][Board::BOARD_SIZE - x - 1];
+		}
+	}
+}
+
+
+std::string AI_alpha_beta::to_string(Mass board[][Board::BOARD_SIZE])
+{
+	std::string str;
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			str += '0' + board[y][x].getStatus();
+		}
+	}
+
+	return str;
+}
+
+bool AI_alpha_beta::find_cache(Board& board, int& score)
+{
+	Mass current[Board::BOARD_SIZE][Board::BOARD_SIZE];
+
+	memcpy((void*)current, (void*)board.mass_, sizeof(Mass) * Board::BOARD_SIZE * Board::BOARD_SIZE);
+
+	bool is_flip = false;
+
+	// 線対称 + 点対称で8パターン
+	for (int i = 0; i < 8; ++i)
+	{
+		if (is_flip)
+		{
+			// 線対称の盤面を取得
+			flip(current);
+		}
+		else
+		{
+			// 点対称の盤面を取得
+			rotate90(current);
+		}
+
+		is_flip = !is_flip;
+
+		std::string key = to_string(current);
+
+		// キャッシュされてたらそのスコアを取得 	
+		if (evaluationCache.find(key) != evaluationCache.end())
+		{
+			score = evaluationCache[key];
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AI_alpha_beta::think(Board& b)
+{
+	int best_x, best_y;
+
+	if (evaluate(-10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
+	{
+		return false;
+	}
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
+
+int AI_alpha_beta::evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+	// 死活判定
+	int r = b.calc_result();
+	if (r == current) return +10000;
+	if (r == next) return -10000;
+	if (r == Board::DRAW) return 0;
+
+	int score_max = -9999; // 打たないで投了
+	std::string current_key; // 現在の盤面のキャッシュキー
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK) continue;
+
+			m.setStatus(current);
+
+			int score;
+			int dummy;
+			current_key = to_string(b.mass_);
+
+			//キャッシュされてる評価値を取得 
+			if (!find_cache(b, score))
+			{
+				score = -evaluate(-beta, -alpha, b, next, dummy, dummy);
+			}
+
+			m.setStatus(Mass::BLANK);
+
+			if (beta < score)
+			{
+				int result = (score_max < score) ? score : score_max;
+				evaluationCache[current_key] = result;
+				return result;
+			}
+			if (score_max < score)
+			{
+				score_max = score;
+				alpha = (alpha < score_max) ? score_max : alpha;
+				best_x = x;
+				best_y = y;
+				evaluationCache[current_key] = score_max;
+			}
+		}
+	}
+
+	return score_max;
+}
 
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ORDERED;
+	const AI::type ai_type = AI::TYPE_ALPHA_BETA;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
