@@ -10,7 +10,10 @@
 
 # 工夫点
 
-* 【行ったことをここに書く】
+* 評価関数の実装
+  * タテ・ヨコ・ナナメの列の石数
+  * 敵の石がある列はカウントしない
+  * 中心に近いほど重みを大きくする
 
 # 取り組み方
 * 本プロジェクトをforkして、取り組んでください。
@@ -19,6 +22,6 @@
 * 可能であれば、速度等を計測して、具体的な効率化度合い、強さを示してください。
 * 納得できるところまでできたところでプルリクを出してください。
 
-[![MSBuild](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml)
+[![MSBuild](https://github.com/harumas/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/harumas/tick-tack-toe/actions/workflows/msbuild.yml)
 
 （↑のソースコードの「tpu-game-2024」を自分のアカウント名に差し替えてください（２か所））
