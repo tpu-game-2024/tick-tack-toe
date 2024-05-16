@@ -1,7 +1,5 @@
 ﻿#include <memory>
 #include <iostream>
-#include <unordered_map> 
-#include <string> 
 
 
 class Mass {
@@ -186,20 +184,16 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
-class AI_alpha_beta : public AI
+class AI_nega_scout : public AI
 {
 private:
-	std::unordered_map<std::string, int> evaluationCache;
-
-	int evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y);
+	int evaluate(int limit, int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y);
 public:
-	AI_alpha_beta() {}
-	~AI_alpha_beta() {}
+	AI_nega_scout() {}
+	~AI_nega_scout() {}
 
-	bool find_cache(Board& board, int& score);
-	void rotate90(Mass board[][Board::BOARD_SIZE]);
-	void flip(Mass board[][Board::BOARD_SIZE]);
-	std::string to_string(Mass board[][Board::BOARD_SIZE]);
+	int evaluate_board(Mass board[][Board::BOARD_SIZE], Mass::status current);
+	int evaluate_line(Mass board[][Board::BOARD_SIZE], Mass::status current);
 
 	bool think(Board& b);
 };
@@ -210,7 +204,7 @@ AI* AI::createAi(type type)
 	{
 		// case TYPE_ORDERED:
 		case type::TYPE_ALPHA_BETA:
-			return new AI_alpha_beta();
+			return new AI_nega_scout();
 			break;
 		default:
 			return new AI_ordered();
@@ -220,91 +214,11 @@ AI* AI::createAi(type type)
 	return nullptr;
 }
 
-
-void AI_alpha_beta::rotate90(Mass board[][Board::BOARD_SIZE])
-{
-	Mass newBoard[Board::BOARD_SIZE][Board::BOARD_SIZE];
-
-	memcpy((void*)newBoard, (void*)board, sizeof(Mass) * Board::BOARD_SIZE * Board::BOARD_SIZE);
-
-	for (int y = 0; y < Board::BOARD_SIZE; ++y)
-	{
-		for (int x = 0; x < Board::BOARD_SIZE; ++x)
-		{
-			board[y][x] = newBoard[x][Board::BOARD_SIZE - y - 1];
-		}
-	}
-}
-
-void AI_alpha_beta::flip(Mass board[][Board::BOARD_SIZE])
-{
-	for (int y = 0; y < Board::BOARD_SIZE; ++y)
-	{
-		for (int x = 0; x < Board::BOARD_SIZE / 2; ++x)
-		{
-			board[y][x] = board[y][Board::BOARD_SIZE - x - 1];
-		}
-	}
-}
-
-
-std::string AI_alpha_beta::to_string(Mass board[][Board::BOARD_SIZE])
-{
-	std::string str;
-
-	for (int y = 0; y < Board::BOARD_SIZE; y++)
-	{
-		for (int x = 0; x < Board::BOARD_SIZE; x++)
-		{
-			str += '0' + board[y][x].getStatus();
-		}
-	}
-
-	return str;
-}
-
-bool AI_alpha_beta::find_cache(Board& board, int& score)
-{
-	Mass current[Board::BOARD_SIZE][Board::BOARD_SIZE];
-
-	memcpy((void*)current, (void*)board.mass_, sizeof(Mass) * Board::BOARD_SIZE * Board::BOARD_SIZE);
-
-	bool is_flip = false;
-
-	// 線対称 + 点対称で8パターン
-	for (int i = 0; i < 8; ++i)
-	{
-		if (is_flip)
-		{
-			// 線対称の盤面を取得
-			flip(current);
-		}
-		else
-		{
-			// 点対称の盤面を取得
-			rotate90(current);
-		}
-
-		is_flip = !is_flip;
-
-		std::string key = to_string(current);
-
-		// キャッシュされてたらそのスコアを取得 	
-		if (evaluationCache.find(key) != evaluationCache.end())
-		{
-			score = evaluationCache[key];
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool AI_alpha_beta::think(Board& b)
+bool AI_nega_scout::think(Board& b)
 {
 	int best_x, best_y;
 
-	if (evaluate(-10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
+	if (evaluate(5, -10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
 	{
 		return false;
 	}
@@ -312,57 +226,165 @@ bool AI_alpha_beta::think(Board& b)
 	return b.mass_[best_y][best_x].put(Mass::ENEMY);
 }
 
-int AI_alpha_beta::evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y)
+int AI_nega_scout::evaluate_board(Mass board[][Board::BOARD_SIZE], Mass::status current)
 {
+	constexpr double half_size = Board::BOARD_SIZE / 2;
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	int score = 0;
+	int tmp_score = 0;
+	bool conflict = false;
+
+	//縦列評価 
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		tmp_score = 0;
+		conflict = false;
+
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass::status status = board[y][x].getStatus();
+
+			if (status == current)
+			{
+				//中心に近いほど重みをつける
+				double weight = 1.0 - std::max(std::abs(x - half_size), std::abs(y - half_size)) / half_size;
+				tmp_score += 10 + (int)(10 * weight);
+			}
+			else if (status == next)
+			{
+				conflict = true;
+				break;
+			}
+		}
+
+		score += conflict ? 0 : tmp_score;
+	}
+
+	//横列評価 
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		tmp_score = 0;
+		conflict = false;
+
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass::status status = board[x][y].getStatus();
+
+			if (status == current)
+			{
+				double weight = 1.0 - std::max(std::abs(x - half_size), std::abs(y - half_size)) / half_size;
+				tmp_score += 10 + (int)(10 * weight);
+			}
+			else if (status == next)
+			{
+				conflict = true;
+				break;
+			}
+		}
+
+		score += conflict ? 0 : tmp_score;
+	}
+
+
+	//右斜め評価 
+	tmp_score = 0;
+	conflict = false;
+	for (int x = 0; x < Board::BOARD_SIZE; x++)
+	{
+		Mass::status status = board[x][x].getStatus();
+
+		if (status == current)
+		{
+			double weight = 1.0 - std::max(std::abs(x - half_size), std::abs(x - half_size)) / half_size;
+			tmp_score += 10 + (int)(10 * weight);
+		}
+		else if (status == next)
+		{
+			conflict = true;
+			break;
+		}
+	}
+	score += conflict ? 0 : tmp_score;
+
+	//左斜め評価 
+	tmp_score = 0;
+	conflict = false;
+	for (int x = Board::BOARD_SIZE - 1; x >= 0; x--)
+	{
+		Mass::status status = board[x][x].getStatus();
+
+		if (status == current)
+		{
+			double weight = 1.0 - std::max(std::abs(x - half_size), std::abs(x - half_size)) / half_size;
+			tmp_score += 10 + (int)(10 * weight);
+		}
+		else if (status == next)
+		{
+			conflict = true;
+			break;
+		}
+	}
+	score += conflict ? 0 : tmp_score;
+
+	return score;
+}
+
+int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::status current, int& best_x, int& best_y)
+{
+	if (limit-- == 0)
+	{
+		return evaluate_board(board.mass_, current);
+	}
+
 	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
 	// 死活判定
-	int r = b.calc_result();
+	int r = board.calc_result();
 	if (r == current) return +10000;
 	if (r == next) return -10000;
 	if (r == Board::DRAW) return 0;
 
-	int score_max = -9999; // 打たないで投了
-	std::string current_key; // 現在の盤面のキャッシュキー
+	int max = -9999; // 打たないで投了
+	int a = alpha;
+	int b = beta;
 
 	for (int y = 0; y < Board::BOARD_SIZE; y++)
 	{
 		for (int x = 0; x < Board::BOARD_SIZE; x++)
 		{
-			Mass& m = b.mass_[y][x];
+			Mass& m = board.mass_[y][x];
 			if (m.getStatus() != Mass::BLANK) continue;
 
 			m.setStatus(current);
 
-			int score;
 			int dummy;
-			current_key = to_string(b.mass_);
+			int score = -evaluate(limit, -b, -a, board, next, dummy, dummy);
 
-			//キャッシュされてる評価値を取得 
-			if (!find_cache(b, score))
+			if (a < score && score < beta && !(x == 0 && y == 0) && limit > 2)
 			{
-				score = -evaluate(-beta, -alpha, b, next, dummy, dummy);
+				score = -evaluate(limit, -beta, -score, board, next, dummy, dummy);
 			}
 
 			m.setStatus(Mass::BLANK);
 
-			if (beta < score)
+			if (max < score)
 			{
-				int result = (score_max < score) ? score : score_max;
-				evaluationCache[current_key] = result;
-				return result;
-			}
-			if (score_max < score)
-			{
-				score_max = score;
-				alpha = (alpha < score_max) ? score_max : alpha;
+				if (beta <= score)
+				{
+					return score;
+				}
+
+				a = std::max(a, score);
 				best_x = x;
 				best_y = y;
-				evaluationCache[current_key] = score_max;
+				max = score;
 			}
+
+			b = a + 1;
 		}
 	}
 
-	return score_max;
+	return max;
 }
 
 class Game
