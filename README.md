@@ -10,7 +10,17 @@
 
 # 工夫点
 
-* 【行ったことをここに書く】
+* 前半は得点テーブル、後半はNega-Scout法を利用することで、時短させました
+* 得点テーブルはAIのターン開始時にすべての列を見て、列ごとに条件をもとに得点を決めて、その列のマスすべてにその得点を足し、最終的に最も得点が高かったマスにコマを置くことで、相手の行動を妨害しつつ、自分の勝利も目指すアルゴリズムができた
+# 得点の条件
+
+* プレイヤーとAIのコマ両方とも置かれていたら追加得点なし
+* 何も置かれてないマス1つにつき1点追加
+* プレイヤーのコマが置かれたマス1つにつき2点追加
+* AIのコマが置かれたマス1つにつき3点追加
+* プレイヤーのコマが4つ置かれていたら100点追加
+* AIのコマが4つ置かれていたら1000点追加
+* すでに何か置かれているマスは問答無用で-1点
 
 # 取り組み方
 * 本プロジェクトをforkして、取り組んでください。
@@ -19,6 +29,6 @@
 * 可能であれば、速度等を計測して、具体的な効率化度合い、強さを示してください。
 * 納得できるところまでできたところでプルリクを出してください。
 
-[![MSBuild](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml)
+[![MSBuild](https://github.com/Mocha0924/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/Mocha0924/tick-tack-toe/actions/workflows/msbuild.yml)
 
 （↑のソースコードの「tpu-game-2024」を自分のアカウント名に差し替えてください（２か所））
