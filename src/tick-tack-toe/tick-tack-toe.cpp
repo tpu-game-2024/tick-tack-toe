@@ -219,7 +219,7 @@ int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best
 	int score_max = -10001; // 打たないのは最悪
 	
 	for (int y = 0;y < Board::BOARD_SIZE; y++) {
-		for (int x = 0;x < Board::BOARD_SIZE;x;;) {
+		for (int x = 0;x < Board::BOARD_SIZE;x++) {
 			Mass::& m = b.mass_[y][x];
 			if (m.getStatus() != Mass::BLANK)continue;
 
