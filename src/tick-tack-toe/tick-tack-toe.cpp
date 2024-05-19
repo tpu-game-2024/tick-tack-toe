@@ -34,6 +34,7 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_NEGA_MAX,
 	};
 
 	static AI* createAi(type type);
@@ -48,9 +49,22 @@ public:
 	bool think(Board& b);
 };
 
+class AI_nega_max : public AI {
+private:
+	int evaluate(Board& b, Mass::status next);
+public:
+	AI_nega_max() {}
+	~AI_nega_max() {}
+
+	bool think(Board& b);
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
+	case TYPE_NEGA_MAX:
+		return new AI_nega_max();
+		break;
 		// case TYPE_ORDERED:
 	default:
 		return new AI_ordered();
@@ -102,7 +116,7 @@ public:
 			for (; y < BOARD_SIZE; y++) {
 				if (mass_[y][x].getStatus() != winner) break;
 			}
-			if (y == BOARD_SIZE) { return(Board::WINNER) winner; }
+			if (y == BOARD_SIZE) { return(Board::WINNER)winner; }
 		}
 		// 斜め
 		{
@@ -166,8 +180,8 @@ public:
 					std::cout << "　";
 					break;
 				default:
-//					if (mass_[y][x].isListed(Mass::CLOSE)) std::cout << "＋"; else
-//					if (mass_[y][x].isListed(Mass::OPEN) ) std::cout << "＃"; else
+					//					if (mass_[y][x].isListed(Mass::CLOSE)) std::cout << "＋"; else
+					//					if (mass_[y][x].isListed(Mass::OPEN) ) std::cout << "＃"; else
 					std::cout << "　";
 				}
 			}
@@ -193,7 +207,49 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
+int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+	// 死活判定
+	int r = b.calc_result();
+	if (r == current)return +10000; // 呼び出し側の勝ち
+	if (r == next)return -10000; // 呼び出し側の負け
+	if (r == Board::DRAW) return 0; // 引き分け
 
+	int score_max = -10001; // 打たないのは最悪
+	
+	for (int y = 0;y < Board::BOARD_SIZE; y++) {
+		for (int x = 0;x < Board::BOARD_SIZE;x;;) {
+			Mass::& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK)continue;
+
+			m.setStatus(current); // 次の手を打つ
+			int dummy;
+			int score = -evaluate(b, next, dummy, dummy);
+			m.setStatus(Mass::BLANK); // 手を戻す
+
+			if (score_max < score) {
+				score_max = score;
+				best_x = x;
+				best_y = y;
+			}
+		}
+	}
+
+	return score_max;
+}
+
+bool AI_nega_max::think(Board& b)
+{
+	int best_x = -1, best_y;
+
+	evaluate(b, Mass::ENEMY, best_x, best_y);
+
+	if (best_x < 0)return false; // 打てる手はなかった
+	
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+
+}
 
 class Game
 {
