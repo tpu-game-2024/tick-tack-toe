@@ -51,13 +51,24 @@ public:
 
 class AI_nega_max : public AI {
 private:
-	int evaluate(Board& b, Mass::status next);
+	int evaluate(Board& b, Mass::status next, int& best_x, int& best_y);
 public:
 	AI_nega_max() {}
 	~AI_nega_max() {}
 
 	bool think(Board& b);
 };
+
+class AI_alpha_beta :public AI {
+private:
+	int evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_alpha_beta(){}
+	~AI_alpha_beta(){}
+
+	bool think(Board& b);
+};
+
 
 AI* AI::createAi(type type)
 {
@@ -77,6 +88,7 @@ AI* AI::createAi(type type)
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_nega_max;
 
 public:
 	enum WINNER {
@@ -93,7 +105,7 @@ private:
 
 public:
 	Board() {
-		//		mass_[0][0].setStatus(Mass::ENEMY); mass_[0][1].setStatus(Mass::PLAYER); 
+		mass_[0][0].setStatus(Mass::ENEMY); mass_[0][1].setStatus(Mass::PLAYER); 
 	}
 	Board::WINNER calc_result() const
 	{
@@ -202,6 +214,7 @@ bool AI_ordered::think(Board& b)
 			if (b.mass_[y][x].put(Mass::ENEMY)) {
 				return true;
 			}
+
 		}
 	}
 	return false;
@@ -220,7 +233,7 @@ int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best
 	
 	for (int y = 0;y < Board::BOARD_SIZE; y++) {
 		for (int x = 0;x < Board::BOARD_SIZE;x++) {
-			Mass::& m = b.mass_[y][x];
+			Mass& m = b.mass_[y][x];
 			if (m.getStatus() != Mass::BLANK)continue;
 
 			m.setStatus(current); // 次の手を打つ
