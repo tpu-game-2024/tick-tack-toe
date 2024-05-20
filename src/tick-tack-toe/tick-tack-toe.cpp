@@ -25,7 +25,6 @@ public:
 
 class Board;
 
-// Forward declaration of AI_alphaBeta class
 class AI_alphaBeta;
 
 class AI {
@@ -71,7 +70,6 @@ public:
     Board(int size) : board_size_(size), mass_(size, std::vector<Mass>(size)) {}
 
     Board::WINNER calc_result() const {
-        // Check rows
         for (int y = 0; y < board_size_; y++) {
             Mass::status winner = mass_[y][0].getStatus();
             if (winner != Mass::PLAYER && winner != Mass::ENEMY) continue;
@@ -81,7 +79,6 @@ public:
             }
             if (x == board_size_) { return (Board::WINNER)winner; }
         }
-        // Check columns
         for (int x = 0; x < board_size_; x++) {
             Mass::status winner = mass_[0][x].getStatus();
             if (winner != Mass::PLAYER && winner != Mass::ENEMY) continue;
@@ -91,7 +88,6 @@ public:
             }
             if (y == board_size_) { return(Board::WINNER) winner; }
         }
-        // Check diagonals
         {
             Mass::status winner = mass_[0][0].getStatus();
             if (winner == Mass::PLAYER || winner == Mass::ENEMY) {
@@ -112,7 +108,6 @@ public:
                 if (idx == board_size_) { return (Board::WINNER)winner; }
             }
         }
-        // Check for draw
         for (int y = 0; y < board_size_; y++) {
             for (int x = 0; x < board_size_; x++) {
                 Mass::status fill = mass_[y][x].getStatus();
