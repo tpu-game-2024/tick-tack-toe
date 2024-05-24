@@ -376,7 +376,7 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::
 
 bool AI_nega_scout::think(Board& b)
 {
-	int best_x=-1, best_y;
+	int best_x, best_y;
 
 	if (evaluate(5, -10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
 	{
