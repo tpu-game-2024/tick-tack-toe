@@ -368,7 +368,6 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::
 			}
 
 			b = a + 1;
-			std::cout << score << std::endl;
 		}
 	}
 
@@ -377,15 +376,12 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::
 
 bool AI_nega_scout::think(Board& b)
 {
-	int best_x, best_y;
+	int best_x=-1, best_y;
 
 	if (evaluate(5, -10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
 	{
-		std::cout << "kiki" << std::endl;
 		return false; // 打てる手はなかった
-
 	}
-
 
 	return b.mass_[best_y][best_x].put(Mass::ENEMY);
 }
@@ -396,8 +392,8 @@ class Game
 private:
 	//const AI::type ai_type = AI::TYPE_ORDERED;
 	//const AI::type ai_type = AI::TYPE_NEGA_MAX;
-	const AI::type ai_type = AI::TYPE_ALPHA_BETA;
-	//const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
+	//const AI::type ai_type = AI::TYPE_ALPHA_BETA;
+	const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
