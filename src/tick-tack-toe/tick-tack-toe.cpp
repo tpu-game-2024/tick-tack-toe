@@ -342,6 +342,7 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::
 	if (r == Board::DRAW) return 0; // 引き分け
 
 	int a = alpha, b = beta;
+	bool is_first = true;
 
 	for (int y = 0;y < Board::BOARD_SIZE; y++) {
 		for (int x = 0;x < Board::BOARD_SIZE;x++) {
@@ -351,10 +352,11 @@ int AI_nega_scout::evaluate(int limit, int alpha, int beta, Board& board, Mass::
 			m.setStatus(current); // 次の手を打つ
 			int dummy;
 			int score = -evaluate(limit, -b, -a, board, next, dummy, dummy);
-			if (a < score && score < beta && !(x == 0 && y == 0) && limit <= 2)
+			if (a < score && score < beta && !is_first || 2 <= limit)
 			{
-				a = -evaluate(limit, -beta, -score, board, next, dummy, dummy);
+				score = -evaluate(limit, -beta, -score, board, next, dummy, dummy);
 			}
+			is_first = false;
 
 			m.setStatus(Mass::BLANK); // 手を戻す
 
@@ -488,6 +490,7 @@ int main()
 				// AI
 				if (!game->think()) {
 					show_end_message(Board::WINNER::PLAYER);// 投了
+					break;
 				}
 				std::cout << std::endl;
 			}
