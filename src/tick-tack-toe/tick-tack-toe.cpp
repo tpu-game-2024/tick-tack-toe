@@ -101,6 +101,9 @@ public:
 	AI_montecarlo_tree() {}
 	~AI_montecarlo_tree() {}
 
+	bool will_win(Board &b, int& best_x, int& best_y);
+	bool will_lose(Board &b, int &best_x, int& best_y);
+
 	bool think(Board& b);
 };
  
@@ -557,7 +560,7 @@ int AI_montecarlo_tree::evaluate(bool all_search, int count, Board& b, Mass::sta
 				best_x = x_table[idx];
 				best_y = y_table[idx];
 			}
-			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << score << "% (win:" << wins[idx] << ", lose:" << loses[idx] << ")" << std::endl;
+			// std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << score << "% (win:" << wins[idx] << ", lose:" << loses[idx] << ")" << std::endl;
 		}
 
 		return score_max;
@@ -594,11 +597,52 @@ int AI_montecarlo_tree::select_mass(int n, int* a_count, int* a_wins) {
 bool AI_montecarlo_tree::think(Board& b) {
 	int best_x = -1, best_y;
 
+	if (will_win(b, best_x, best_y)) return b.mass_[best_y][best_x].put(Mass::ENEMY);
+	if (will_lose(b, best_x, best_y)) return b.mass_[best_y][best_x].put(Mass::ENEMY);
+
 	evaluate(true, 10000, b, Mass::ENEMY, best_x, best_y);
 
 	if (best_x < 0) return false;
 
 	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
+
+bool AI_montecarlo_tree::will_win(Board &b, int& best_x, int& best_y) {
+	for (int y = 0; y < Board::BOARD_SIZE; y++) {
+		for (int x = 0; x < Board::BOARD_SIZE; x++) {
+			if (b.mass_[y][x].getStatus() != Mass::BLANK) continue;
+
+			b.mass_[y][x].setStatus(Mass::ENEMY);
+			int r = b.calc_result();
+			b.mass_[y][x].setStatus(Mass::BLANK);
+			if (r == Mass::ENEMY) {
+				best_x = x;
+				best_y = y;
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool AI_montecarlo_tree::will_lose(Board& b, int& best_x, int& best_y) {
+	for (int y = 0; y < Board::BOARD_SIZE; y++) {
+		for (int x = 0; x < Board::BOARD_SIZE; x++) {
+			if (b.mass_[y][x].getStatus() != Mass::BLANK) continue;
+
+			b.mass_[y][x].setStatus(Mass::PLAYER);
+			int r = b.calc_result();
+			b.mass_[y][x].setStatus(Mass::BLANK);
+			if (r == Mass::PLAYER) {
+				best_x = x;
+				best_y = y;
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 
