@@ -96,12 +96,15 @@ public:
 class AI_montecarlo_tree :public AI {
 private:
 	static int select_mass(int n, int* a_cout, int* a_wins);
+	bool check_win(Board& b,int &best_x,int &best_y);
+	bool check_lose(Board& b,int &best_x,int &best_y);
 	int evaluate(bool all_seach, int count, Board& b, Mass::status current, int& best_x, int& best_y);
 public:
 	AI_montecarlo_tree() {}
 	~AI_montecarlo_tree() {}
 
 	bool think(Board& b);
+
 };
 
 
@@ -152,6 +155,7 @@ private:
 	enum {
 		BOARD_SIZE = 3,
 	};
+	static const int BOARD_SIZE_HALF = BOARD_SIZE / 2;
 	Mass mass_[BOARD_SIZE][BOARD_SIZE];
 
 public:
@@ -620,10 +624,64 @@ int AI_montecarlo_tree::select_mass(int n, int* a_count, int* a_wins)
 	return -1;
 }
 
+bool AI_montecarlo_tree::check_win(Board& board,int &best_x,int &best_y)
+{
+	for (int y = 0;y < Board::BOARD_SIZE; y++) {
+		for (int x = 0;x < Board::BOARD_SIZE;x++) {
+			Mass& m = board.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK)continue;
+
+			m.setStatus(Mass::ENEMY); // 次の手を打つ
+			if (board.calc_result() == Mass::ENEMY)
+			{
+				best_x = x;
+				best_y = y;
+				std::cout << "勝てる場所に置く" << std::endl;
+				m.setStatus(Mass::BLANK); // 手を戻す
+				return true;
+			}
+			m.setStatus(Mass::BLANK); // 手を戻す
+		}
+	}
+	return false;
+}
+
+bool AI_montecarlo_tree::check_lose(Board& board, int& best_x, int& best_y)
+{
+	for (int y = 0;y < Board::BOARD_SIZE; y++) {
+		for (int x = 0;x < Board::BOARD_SIZE;x++) {
+			Mass& m = board.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK)continue;
+
+			m.setStatus(Mass::PLAYER); // 次の手を打つ
+			if (board.calc_result() == Mass::PLAYER)
+			{
+				best_x = x;
+				best_y = y;
+				std::cout << "負けないように置く" << std::endl;
+				m.setStatus(Mass::BLANK); // 手を戻す
+
+				return true;
+			}
+			m.setStatus(Mass::BLANK); // 手を戻す
+
+		}
+	}
+	return false;
+}
 
 bool AI_montecarlo_tree::think(Board& b)
 {
 	int best_x = -1, best_y;
+
+	if (b.mass_[Board::BOARD_SIZE_HALF][Board::BOARD_SIZE_HALF].getStatus() == Mass::BLANK)
+		return b.mass_[Board::BOARD_SIZE_HALF][Board::BOARD_SIZE_HALF].put(Mass::ENEMY);
+
+	if (check_win(b, best_x, best_y))
+		return b.mass_[best_y][best_x].put(Mass::ENEMY);
+
+	if (check_lose(b, best_x, best_y))
+		return b.mass_[best_y][best_x].put(Mass::ENEMY);
 
 	evaluate(true, 10000, b, Mass::ENEMY, best_x, best_y);
 
@@ -685,6 +743,7 @@ void show_start_message()
 	std::cout << "       GAME START       " << std::endl;
 	std::cout << std::endl;
 	std::cout << "input position likes 1 a" << std::endl;
+	std::cout << "if input 0 0 next game  " << std::endl;
 	std::cout << "========================" << std::endl;
 }
 
@@ -728,6 +787,11 @@ int main()
 				do {
 					std::cout << "? ";
 					std::cin >> row >> col;
+					if (col[0] == '0' && row[0] == '0')
+					{
+						winner = Board::DRAW;
+						break;
+					}
 				} while (!game->put(row[0] - '1', col[0] - 'a'));
 			}
 			else {
@@ -738,10 +802,12 @@ int main()
 				}
 				std::cout << std::endl;
 			}
+			if (winner == Board::DRAW)
+				break;
 			// プレイヤーとAIの切り替え
 			turn = 1 - turn;
 		}
 	}
-
+	END:
 	return 0;
 }
