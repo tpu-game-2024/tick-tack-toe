@@ -37,6 +37,7 @@ public:
 		TYPE_NEGA_MAX,
 		TYPE_ALPHA_BETA,
 		TYPE_NEGA_SCOUT,
+		TYPE_MONTE_CARLO,
 	};
 
 	static AI* createAi(type type);
@@ -81,6 +82,16 @@ public:
 	bool think(Board& b);
 };
 
+class AI_monte_carlo :public AI {
+private:
+	int evaluate(bool first_time, Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_monte_carlo() {}
+	~AI_monte_carlo() {}
+
+	bool think(Board& b);
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
@@ -92,6 +103,9 @@ AI* AI::createAi(type type)
 		break;
 	case TYPE_NEGA_SCOUT:
 		return new AI_nega_scout();
+		break;
+	case TYPE_MONTE_CARLO:
+		return new AI_monte_carlo();
 		break;
 	default:
 		return new AI_ordered();
@@ -107,6 +121,7 @@ class Board
 	friend class AI_nega_max;
 	friend class AI_alpha_beta;
 	friend class AI_nega_scout;
+	friend class AI_monte_carlo;
 
 public:
 	enum WINNER {
@@ -389,6 +404,90 @@ bool AI_nega_scout::think(Board& b)
 	return b.mass_[best_y][best_x].put(Mass::ENEMY);
 }
 
+int AI_monte_carlo::evaluate(bool first_time, Board& board, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	// 死活判定
+	int r = board.calc_result();
+	if (r == current)return +10000; // 呼び出し側の勝ち
+	if (r == next)return -10000; // 呼び出し側の負け
+	if (r == Board::DRAW) return 0; // 引き分け
+
+	char x_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	char y_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int wins[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int loses[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int blank_mass_num = 0;
+
+	// 空いているマスの数を数え、配列として位置を確保する
+	for (int y = 0;y < Board::BOARD_SIZE; y++) {
+		for (int x = 0;x < Board::BOARD_SIZE;x++) {
+			Mass& m = board.mass_[y][x];
+			if (m.getStatus() == Mass::BLANK)
+			{
+				x_table[blank_mass_num] = x;
+				y_table[blank_mass_num] = y;
+				wins[blank_mass_num] = loses[blank_mass_num] = 0;
+				blank_mass_num++;
+			}
+		}
+	}
+	if (first_time) {
+		// 一番上の階層でランダムに指すのを繰り返す
+		for (int i = 0;i < 10000;i++) {
+			int idx = rand() % blank_mass_num;
+			Mass& m = board.mass_[y_table[idx]][x_table[idx]];
+
+			m.setStatus(current); // 次の手を打つ
+			int dummy;
+			int score = -evaluate(false, board, next, dummy, dummy);
+			m.setStatus(Mass::BLANK);// 手を戻す
+
+			if (0 <= score) {
+				wins[idx]++;
+			}
+			else {
+				loses[idx]++;
+			}
+		}
+		int score_max = -9999;
+		for (int idx = 0;idx < blank_mass_num;idx++) {
+			int score = wins[idx] + loses[idx];
+			if (0 != score) {
+				score = 100 * wins[idx] / score;// 勝率
+			}
+			if (score_max < score) {
+				score_max = score;
+				best_x = x_table[idx];
+				best_y = y_table[idx];
+			}
+			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << score << "% (win:" << wins[idx];
+			std::cout << ",lose:" << loses[idx] << ")"<<std::endl;
+		}
+		return score_max;
+	}
+	
+	int idx = rand() % blank_mass_num;
+	Mass& m = board.mass_[y_table[idx]][x_table[idx]];
+	m.setStatus(current);// 次の手を打つ
+	int dummy;
+	int score = -evaluate(false, board, next, dummy, dummy);
+	m.setStatus(Mass::BLANK);// 手を戻す
+
+	return score;
+}
+
+bool AI_monte_carlo::think(Board& b)
+{
+	int best_x = -1, best_y;
+
+	evaluate(true, b, Mass::ENEMY, best_x, best_y);
+
+	if (best_x < 0) return false; // 打てる手はなかった
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
 
 class Game
 {
@@ -396,7 +495,8 @@ private:
 	//const AI::type ai_type = AI::TYPE_ORDERED;
 	//const AI::type ai_type = AI::TYPE_NEGA_MAX;
 	//const AI::type ai_type = AI::TYPE_ALPHA_BETA;
-	const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
+	//const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
+	const AI::type ai_type = AI::TYPE_MONTE_CARLO;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
