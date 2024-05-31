@@ -808,6 +808,5 @@ int main()
 			turn = 1 - turn;
 		}
 	}
-	END:
 	return 0;
 }
