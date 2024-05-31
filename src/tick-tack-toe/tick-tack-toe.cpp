@@ -38,6 +38,7 @@ public:
 		TYPE_ALPHA_BETA,
 		TYPE_NEGA_SCOUT,
 		TYPE_MONTE_CARLO,
+		TYPE_MONTECARLO_TREE,
 	};
 
 	static AI* createAi(type type);
@@ -92,6 +93,19 @@ public:
 	bool think(Board& b);
 };
 
+class AI_montecarlo_tree :public AI {
+private:
+	static int select_mass(int n, int* a_cout, int* a_wins);
+	int evaluate(bool all_seach, int count, Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_montecarlo_tree() {}
+	~AI_montecarlo_tree() {}
+
+	bool think(Board& b);
+};
+
+
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
@@ -106,6 +120,9 @@ AI* AI::createAi(type type)
 		break;
 	case TYPE_MONTE_CARLO:
 		return new AI_monte_carlo();
+		break;
+	case TYPE_MONTECARLO_TREE:
+		return new AI_montecarlo_tree();
 		break;
 	default:
 		return new AI_ordered();
@@ -122,6 +139,7 @@ class Board
 	friend class AI_alpha_beta;
 	friend class AI_nega_scout;
 	friend class AI_monte_carlo;
+	friend class AI_montecarlo_tree;
 
 public:
 	enum WINNER {
@@ -463,11 +481,11 @@ int AI_monte_carlo::evaluate(bool first_time, Board& board, Mass::status current
 				best_y = y_table[idx];
 			}
 			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << score << "% (win:" << wins[idx];
-			std::cout << ",lose:" << loses[idx] << ")"<<std::endl;
+			std::cout << ",lose:" << loses[idx] << ")" << std::endl;
 		}
 		return score_max;
 	}
-	
+
 	int idx = rand() % blank_mass_num;
 	Mass& m = board.mass_[y_table[idx]][x_table[idx]];
 	m.setStatus(current);// 次の手を打つ
@@ -489,6 +507,131 @@ bool AI_monte_carlo::think(Board& b)
 	return b.mass_[best_y][best_x].put(Mass::ENEMY);
 }
 
+int AI_montecarlo_tree::evaluate(bool all_seach, int sim_count, Board& board, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	// 死活判定
+	int r = board.calc_result();
+	if (r == current)return +10000; // 呼び出し側の勝ち
+	if (r == next)return -10000; // 呼び出し側の負け
+	if (r == Board::DRAW) return 0; // 引き分け
+
+	char x_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	char y_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int wins[Board::BOARD_SIZE * Board::BOARD_SIZE];// 勝利数
+	int count[Board::BOARD_SIZE * Board::BOARD_SIZE];// 敗北数
+	int scores[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int blank_mass_num = 0;
+
+	// 空いているマスの数を数え、配列として位置を確保する
+	for (int y = 0;y < Board::BOARD_SIZE; y++) {
+		for (int x = 0;x < Board::BOARD_SIZE;x++) {
+			Mass& m = board.mass_[y][x];
+			if (m.getStatus() == Mass::BLANK)
+			{
+				x_table[blank_mass_num] = x;
+				y_table[blank_mass_num] = y;
+				wins[blank_mass_num] = count[blank_mass_num] = 0;
+				scores[blank_mass_num] = -1;
+				blank_mass_num++;
+			}
+		}
+	}
+	if (all_seach) {
+		// 一番上の階層でランダムに指すのを繰り返す
+		for (int i = 0;i < 10000;i++) {
+			int idx = select_mass(blank_mass_num, count, wins);
+			if (idx < 0)break;
+			Mass& m = board.mass_[y_table[idx]][x_table[idx]];
+
+			m.setStatus(current); // 次の手を打つ
+			int dummy;
+			int score = -evaluate(false, 0, board, next, dummy, dummy);
+			m.setStatus(Mass::BLANK);// 手を戻す
+
+			if (0 <= score) {
+				wins[idx]++;
+				count[idx]++;
+			}
+			else {
+				count[idx]++;
+			}
+			// 閾値を超えれば、木を成長させる
+			if (sim_count / 10 < count[idx]// 閾値は10％以上の探索回数
+				&& 10 < sim_count) {// 回数が少ないとはランダムの精度が下がるので、成長させない
+				m.setStatus(current);// 次の手を打つ
+				scores[idx] = 100 - evaluate(true, (int)sqrt(sim_count), board, next, dummy, dummy);
+				m.setStatus(Mass::BLANK);// 手を戻す
+				wins[idx] = -1;// この枝は乱数で呼ばれないようにする
+			}
+
+		}
+		int score_max = -9999;
+		for (int idx = 0;idx < blank_mass_num;idx++) {
+			int score;
+			if (-1 == wins[idx]) {
+				score = scores[idx];// 枝分かれした
+			}
+			else if (0 == count[idx]) {
+				score = 0;// 一度も通らなかった
+			}
+			else {
+				double c = 1.0 * sqrt(2 * log(sim_count) / count[idx]);
+				score = 100 * wins[idx] / count[idx] + (int)(c);// 勝率
+			}
+			if (score_max < score) {
+				score_max = score;
+				best_x = x_table[idx];
+				best_y = y_table[idx];
+			}
+			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " ";
+			std::cout << score << "% (win:" << wins[idx] << ",lose:" << count[idx] << ")" << std::endl;
+		}
+		return score_max;
+	}
+
+	int idx = rand() % blank_mass_num;
+	Mass& m = board.mass_[y_table[idx]][x_table[idx]];
+	m.setStatus(current);// 次の手を打つ
+	int dummy;
+	int score = -evaluate(false, 0, board, next, dummy, dummy);
+	m.setStatus(Mass::BLANK);// 手を戻す
+
+	return score;
+}
+
+// 勝率が高いほど多く割り当てる
+int AI_montecarlo_tree::select_mass(int n, int* a_count, int* a_wins)
+{
+	int total = 0;
+	for (int i = 0;i < n;i++) {
+		total += 10000 * (a_wins[i] + 1) / (a_count[i] + 1);// 0の時にも確率があるように+1する
+	}
+	if (total <= 0)return -1;
+
+	int r = rand() % total;
+	for (int i = 0;i < n;i++) {
+		r -= 10000 * (a_wins[i] + 1) / (a_count[i] + 1);
+		if (r < 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+
+bool AI_montecarlo_tree::think(Board& b)
+{
+	int best_x = -1, best_y;
+
+	evaluate(true, 10000, b, Mass::ENEMY, best_x, best_y);
+
+	if (best_x < 0) return false; // 打てる手はなかった
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
+
 class Game
 {
 private:
@@ -496,7 +639,8 @@ private:
 	//const AI::type ai_type = AI::TYPE_NEGA_MAX;
 	//const AI::type ai_type = AI::TYPE_ALPHA_BETA;
 	//const AI::type ai_type = AI::TYPE_NEGA_SCOUT;
-	const AI::type ai_type = AI::TYPE_MONTE_CARLO;
+	//const AI::type ai_type = AI::TYPE_MONTE_CARLO;
+	const AI::type ai_type = AI::TYPE_MONTECARLO_TREE;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
