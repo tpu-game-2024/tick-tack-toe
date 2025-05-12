@@ -35,6 +35,7 @@ public:
 	enum type {
 		TYPE_ORDERED = 0,
 		TYPE_NEGA_MAX,
+		TYPE_ALPHA_BETA
 	};
 
 	static AI* createAi(type type);
@@ -61,12 +62,26 @@ public:
 	bool think(Board& b);//AIの思考
 };
 
+//Alpha-Beta法のAI
+class AI_alpha_beta :public AI
+{
+private:
+	int evaluate(int alpha,int beta,Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_alpha_beta() {}//コンストラクタ
+	~AI_alpha_beta() {}//デストラクタ
+
+	bool think(Board& b);//AIの思考
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
-	case TYPE_NEGA_MAX:
+	case TYPE_NEGA_MAX://Nega-Max法のAI
 		return new AI_nega_max();
-	default:
+	case TYPE_ALPHA_BETA://Alpha-Beta法のAI
+		return new AI_alpha_beta();
+	default://順番にうっていくやつ
 		return new AI_ordered();
 		break;
 	}
@@ -78,6 +93,7 @@ class Board
 {
 	friend class AI_ordered;
 	friend class AI_nega_max;
+	friend class AI_alpha_beta;
 
 public:
 	enum WINNER {
@@ -196,6 +212,11 @@ public:
 	}
 };
 
+
+
+
+//☆順番にうっていくやつ
+
 //順番に空いてるところに置く
 bool AI_ordered::think(Board& b)
 {
@@ -208,6 +229,10 @@ bool AI_ordered::think(Board& b)
 	}
 	return false;
 }
+
+
+
+//☆Nega-Max関係
 
 int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best_y)
 {
@@ -260,10 +285,70 @@ bool AI_nega_max::think(Board& b)
 }
 
 
+
+
+//alpha-beta法関係
+
+int AI_alpha_beta::evaluate(int alpha,int beta,Board& b, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	//死活判定
+	int result = b.calc_result();
+	if (result == current) return +10000;//呼び出し側の勝ち
+	if (result == next) return -10000;//呼び出し側の負け
+	if (result == Board::DRAW) return 0;//引き分け
+
+	int score_max = -9999;//打たないで終了
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK) continue;//そのマスが空白でなければ処理はそのマスの処理はやらない
+
+			//評価値を算出
+			m.setStatus(current);//仮に次の手を打つ
+			int dummy;
+			int score = -evaluate(-beta,-alpha,b, next, dummy, dummy);
+			m.setStatus(Mass::BLANK);//元に戻しておく
+
+			if (beta < score)
+			{
+				return (score_max < score) ? score : score_max;//最悪の値より悪い
+			}
+
+			//最大値の確保＆手の記録
+			if (score > score_max)
+			{
+				score_max = score;
+				alpha = (alpha < score_max) ? score_max : alpha;//α値を更新
+				best_x = x;
+				best_y = y;
+			}
+		}
+	}
+
+	return score_max;
+}
+
+//局面ごとに思考する
+bool AI_alpha_beta::think(Board& b)
+{
+	int best_x, best_y;
+
+	if (evaluate(-10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
+		return false;//打てる手はなかった
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
+
+
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_NEGA_MAX;
+	const AI::type ai_type = AI::TYPE_ALPHA_BETA;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
@@ -285,6 +370,7 @@ public:
 	}
 
 	bool think() {
+		//この辺にAIを切り替える処理をいれてもいいかも？
 		bool success = pAI_->think(board_);
 		if (success) winner_ = board_.calc_result();
 		return success;
