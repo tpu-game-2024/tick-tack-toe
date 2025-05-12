@@ -34,6 +34,7 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_NEGA_MAX,
 	};
 
 	static AI* createAi(type type);
@@ -48,10 +49,23 @@ public:
 	bool think(Board& b);
 };
 
+//Nega-Max法のAI
+class AI_nega_max :public AI
+{
+private:
+	int evaluate(Board& b, Mass::status current,int &best_x,int &best_y);
+public:
+	AI_nega_max() {}//コンストラクタ
+	~AI_nega_max() {}//デストラクタ
+
+	bool think(Board& b);//AIの思考
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
-		// case TYPE_ORDERED:
+	case TYPE_NEGA_MAX:
+		return new AI_nega_max();
 	default:
 		return new AI_ordered();
 		break;
@@ -63,6 +77,7 @@ AI* AI::createAi(type type)
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_nega_max;
 
 public:
 	enum WINNER {
@@ -181,6 +196,7 @@ public:
 	}
 };
 
+//順番に空いてるところに置く
 bool AI_ordered::think(Board& b)
 {
 	for (int y = 0; y < Board::BOARD_SIZE; y++) {
@@ -193,12 +209,61 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
+int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	//死活判定
+	int result = b.calc_result();
+	if (result == current) return +10000;//呼び出し側の勝ち
+	if (result == next) return -10000;//呼び出し側の負け
+	if (result == Board::DRAW) return 0;//引き分け
+
+	int score_max = -10001;//打たないのは最悪
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK) continue;//そのマスが空白でなければ処理はそのマスの処理はやらない
+
+			//評価値を算出
+			m.setStatus(current);//仮に次の手を打つ
+			int dummy;
+			int score = -evaluate(b, next, dummy, dummy);
+			m.setStatus(Mass::BLANK);//元に戻しておく
+
+			//最大値の確保＆手の記録
+			if (score > score_max)
+			{
+				score_max = score;
+				best_x = x;
+				best_y = y;
+			}
+		}
+	}
+
+	return score_max;
+}
+
+//局面ごとに思考する
+bool AI_nega_max::think(Board& b)
+{
+	int best_x = -1, best_y;
+
+	evaluate(b, Mass::ENEMY, best_x, best_y);
+
+	if (best_x < 0) return false;
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
 
 
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ORDERED;
+	const AI::type ai_type = AI::TYPE_NEGA_MAX;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
