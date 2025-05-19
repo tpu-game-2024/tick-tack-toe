@@ -1,5 +1,8 @@
 ﻿#include <memory>
 #include <iostream>
+#include <vector>
+#include <list>
+#include <utility>
 
 
 class Mass {
@@ -35,7 +38,8 @@ public:
 	enum type {
 		TYPE_ORDERED = 0,
 		TYPE_NEGA_MAX,
-		TYPE_ALPHA_BETA
+		TYPE_ALPHA_BETA,
+		TYPE_MONTECARLO,
 	};
 
 	static AI* createAi(type type);
@@ -74,6 +78,28 @@ public:
 	bool think(Board& b);//AIの思考
 };
 
+//モンテカルロ法のAI
+class AI_montecarlo :public AI
+{
+private:
+	const int simulationCount = 10000;//プレイアウトする回数
+	bool random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass);//プレイアウト
+
+	struct PlayOutMass
+	{
+		int x = -1;
+		int y = -1;
+		int winCount = 0;
+		int playCount = 0;
+	};
+
+public:
+	AI_montecarlo() {}//コンストラクタ
+	~AI_montecarlo() {}//デストラクタ
+
+	bool think(Board& b);//AIの思考
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
@@ -81,6 +107,8 @@ AI* AI::createAi(type type)
 		return new AI_nega_max();
 	case TYPE_ALPHA_BETA://Alpha-Beta法のAI
 		return new AI_alpha_beta();
+	case TYPE_MONTECARLO://モンテカルロ法のAI
+		return new AI_montecarlo();
 	default://順番にうっていくやつ
 		return new AI_ordered();
 		break;
@@ -94,6 +122,7 @@ class Board
 	friend class AI_ordered;
 	friend class AI_nega_max;
 	friend class AI_alpha_beta;
+	friend class AI_montecarlo;
 
 public:
 	enum WINNER {
@@ -345,10 +374,118 @@ bool AI_alpha_beta::think(Board& b)
 }
 
 
+
+
+//☆モンテカルロ法
+
+//プレイアウト
+bool AI_montecarlo::random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass)
+{
+	//最初はAIのターン
+	Mass::status turn = Mass::ENEMY;
+
+	bool firstTurn = true;//最初のターンか？
+
+	while (b.calc_result() == Board::NOT_FINISED)//ゲームが終わるか引き分けになるまで続く
+	{
+		if (blinkMassList.empty()) break;//空きマスリストに空きがなければここで処理を終了
+
+		//置くマスを決める
+		int idx;
+		idx = rand() % blinkMassList.size();
+		auto it = std::next(blinkMassList.begin(), idx);
+		int x = it->first;
+		int y = it->second;
+
+		if (firstTurn)//最初のターンなら
+		{
+			index_firstMass = idx;//最初に置くマスを伝える
+			firstTurn = false;
+		}
+
+		//置く
+		b.mass_[y][x].setStatus(turn);
+
+		//空きマスリストから置いたマスを削除
+		blinkMassList.erase(it);
+
+		//ターンを交代
+		turn = (turn == Mass::PLAYER) ? Mass::ENEMY : Mass::PLAYER;
+	}
+
+	//決着がついたらAIが勝てたかを返す
+	return b.calc_result() == Board::ENEMY;
+
+}
+
+
+//思考
+bool AI_montecarlo::think(Board& b)
+{
+	//空きマスリストを作る
+	std::list<std::pair<int, int>> blinkMassList;//空きマスリスト(左がx、右がy)
+
+	for (int y = 0; y < b.BOARD_SIZE; y++)
+	{
+		for (int x = 0; x < b.BOARD_SIZE; x++)
+		{
+			if (b.mass_[y][x].getStatus() == Mass::BLANK)
+			{
+				blinkMassList.emplace_back(x, y);
+			}
+		}
+	}
+
+	if (blinkMassList.empty()) return false;//空きマスが無かった場合
+
+	//調査したマスを記録するリストを作る(空きマスリストと要素番号と格納されているマスの位置を一致させる)
+	std::vector<PlayOutMass> candidates;//調査したマスの記録リスト
+
+	for (auto it = blinkMassList.begin(); it!= blinkMassList.end() ;it++)
+	{
+		int x = it->first;
+		int y = it->second;
+		PlayOutMass candidateMass{ x,y };
+
+		candidates.push_back(candidateMass);
+	}
+
+	//空いてるマスをプレイアウトで調査する
+	//最初に置いたマスの要素番号(空きマスリスト上の)とその結果勝ったかを教えてもらう
+	for (int i = 0; i < simulationCount; i++)
+	{
+		int idx;
+		if (random_PlayOut(blinkMassList, b, idx)) candidates[idx].winCount++;//プレイアウトする、勝利していたら勝利カウントを増やす
+		candidates[idx].playCount++;//プレイ回数を増やす
+	}
+
+	//最も勝率の高い手を選ぶ
+	PlayOutMass bestMass;
+	float best_rate = -1;
+
+	for (int i = 0; i < candidates.size(); i++)
+	{
+		if (candidates[i].playCount == 0) continue;//一度も置いていないマスは飛ばす
+
+		float rate = (float)candidates[i].winCount / candidates[i].playCount;
+
+		if (rate > best_rate)//最大値を更新
+		{
+			best_rate = rate;
+			bestMass = candidates[i];
+		}
+	}
+
+	if (best_rate < 0) return false;//一度もプレイアウトしていなくて最大勝率が初期値(-1)のままの場合
+
+	return b.mass_[bestMass.y][bestMass.x].put(Mass::ENEMY);
+}
+
+
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ALPHA_BETA;
+	const AI::type ai_type = AI::TYPE_MONTECARLO;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
@@ -371,6 +508,7 @@ public:
 
 	bool think() {
 		//この辺にAIを切り替える処理をいれてもいいかも？
+		//前半alpha-betaで後半モンテカルロ法に切り替えてみてもいいかも？
 		bool success = pAI_->think(board_);
 		if (success) winner_ = board_.calc_result();
 		return success;
