@@ -82,7 +82,10 @@ public:
 class AI_montecarlo :public AI
 {
 private:
-	const int simulationCount = 100000;//プレイアウトする回数
+	//playOutloadControlがfalseの時...どれだけ空きマスがあったとしてもsimulationCount回プレイアウトを行う
+	//playOutloadControlがtrueの時...空きマスの数に応じてプレイアウト回数を調整(simulationCount/残り空きマス数回プレイアウトを行う)
+	const int simulationCount = 500000;//プレイアウトをどれだけするか
+	const bool playOutLoadControl=true;//これがtrueになっていると残り空きマスの数に応じてプレイアウトの回数を調整するようになる(常にプレイアウトの処理負荷が一定になる)
 	const float winCoefficient = 1.0f;//評価時の勝利率にかける係数
 	const float drawCoefficient = 1.0f;//評価時の引き分け率にかける係数
 	int random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass);//プレイアウト
@@ -127,6 +130,7 @@ class Board
 	friend class AI_nega_max;
 	friend class AI_alpha_beta;
 	friend class AI_montecarlo;
+	friend class Game;
 
 public:
 	enum WINNER {
@@ -135,10 +139,12 @@ public:
 		ENEMY,
 		DRAW,
 	};
-private:
+
 	enum {
 		BOARD_SIZE = 3,
 	};
+private:
+	
 	Mass mass_[BOARD_SIZE][BOARD_SIZE];
 
 public:
@@ -224,7 +230,7 @@ public:
 					std::cout << "〇";
 					break;
 				case Mass::ENEMY:
-					std::cout << "×";
+					std::cout << "× ";
 					break;
 				case Mass::BLANK:
 					std::cout << "　";
@@ -456,7 +462,13 @@ bool AI_montecarlo::think(Board& b)
 
 	//空いてるマスをプレイアウトで調査する
 	//最初に置いたマスの要素番号(空きマスリスト上の)とその結果勝ったかを教えてもらう
-	for (int i = 0; i < simulationCount; i++)
+
+	//プレイアウト回数の決定
+	//playOutLoadControlがtrueになっているなら残り空きマスの数に応じてプレイアウト回数を調整
+	//falseならsimlationCount回数分そのままプレイアウトする
+	int playOutCount = (playOutLoadControl) ? simulationCount / blinkMassList.size() : simulationCount;
+
+	for (int i = 0; i < playOutCount; i++)
 	{
 		int idx;
 
@@ -494,8 +506,6 @@ bool AI_montecarlo::think(Board& b)
 
 	if (bestScore == -1) return false;//一度もプレイアウトしていなくて最大勝率が初期値(-1)のままの場合
 
-	std::cout << bestScore << "," << bestMass.x << "," << bestMass.y << std::endl;
-
 	return b.mass_[bestMass.y][bestMass.x].put(Mass::ENEMY);
 }
 
@@ -504,6 +514,7 @@ class Game
 {
 private:
 	const AI::type ai_type = AI::TYPE_MONTECARLO;
+	const int borderBlinkMassCount_ChangeToAlphaBeta = 5;//モンテカルロ法からalpha-beta法に変更する判断をする空きマスの数(空きマスの数がこの数以下になるとalpha-beta法になる)
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
@@ -525,8 +536,30 @@ public:
 	}
 
 	bool think() {
-		//この辺にAIを切り替える処理をいれてもいいかも？
-		//前半alpha-betaで後半モンテカルロ法に切り替えてみてもいいかも？
+		//残り空きマスが少なくなったらモンテカルロ法からalpha-beta法に変更
+
+		//空きマスを数える
+		int blinkMassCount = 0;
+
+		for (int y = 0; y < board_.BOARD_SIZE; y++)
+		{
+			for (int x = 0; x < board_.BOARD_SIZE; x++)
+			{
+				if (board_.mass_[y][x].getStatus() == Mass::BLANK)
+				{
+					blinkMassCount++;
+				}
+			}
+		}
+
+		//空きマス数が一定以下になるとモンテカルロ法からalpha-beta法に変更
+		if (blinkMassCount <= borderBlinkMassCount_ChangeToAlphaBeta)
+		{
+			pAI_ = AI::createAi(AI::TYPE_ALPHA_BETA);
+			std::cout << "AI:ここから本気出すね～" << std::endl;
+		}
+
+
 		bool success = pAI_->think(board_);
 		if (success) winner_ = board_.calc_result();
 		return success;
