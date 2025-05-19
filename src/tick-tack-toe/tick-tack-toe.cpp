@@ -556,7 +556,7 @@ public:
 		if (blinkMassCount <= borderBlinkMassCount_ChangeToAlphaBeta)
 		{
 			pAI_ = AI::createAi(AI::TYPE_ALPHA_BETA);
-			std::cout << "AI:ここから本気出すね～" << std::endl;
+			std::cout << "AI:ここから本気出すね～" << std::endl;//一応AIが変わったのが分かりやすいようにメッセージを出すようにしておく
 		}
 
 
