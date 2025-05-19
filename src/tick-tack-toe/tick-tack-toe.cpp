@@ -82,15 +82,19 @@ public:
 class AI_montecarlo :public AI
 {
 private:
-	const int simulationCount = 10000;//プレイアウトする回数
-	bool random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass);//プレイアウト
+	const int simulationCount = 100000;//プレイアウトする回数
+	const float winCoefficient = 1.0f;//評価時の勝利率にかける係数
+	const float drawCoefficient = 1.0f;//評価時の引き分け率にかける係数
+	int random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass);//プレイアウト
 
 	struct PlayOutMass
 	{
 		int x = -1;
 		int y = -1;
-		int winCount = 0;
-		int playCount = 0;
+		int winCount = 0;//勝利数
+		int loseCount = 0;//敗北数
+		int playCount = 0;//プレイ数
+		//(プレイ数ー勝利数ー敗北数で引き分け数が求まるはず)
 	};
 
 public:
@@ -379,7 +383,7 @@ bool AI_alpha_beta::think(Board& b)
 //☆モンテカルロ法
 
 //プレイアウト
-bool AI_montecarlo::random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass)
+int AI_montecarlo::random_PlayOut(std::list<std::pair<int, int>> blinkMassList, Board b, int& index_firstMass)
 {
 	//最初はAIのターン
 	Mass::status turn = Mass::ENEMY;
@@ -413,8 +417,8 @@ bool AI_montecarlo::random_PlayOut(std::list<std::pair<int, int>> blinkMassList,
 		turn = (turn == Mass::PLAYER) ? Mass::ENEMY : Mass::PLAYER;
 	}
 
-	//決着がついたらAIが勝てたかを返す
-	return b.calc_result() == Board::ENEMY;
+	//決着がついたら勝者を返す
+	return (int)b.calc_result();
 
 }
 
@@ -455,28 +459,42 @@ bool AI_montecarlo::think(Board& b)
 	for (int i = 0; i < simulationCount; i++)
 	{
 		int idx;
-		if (random_PlayOut(blinkMassList, b, idx)) candidates[idx].winCount++;//プレイアウトする、勝利していたら勝利カウントを増やす
+
+		int winner = random_PlayOut(blinkMassList, b, idx);//プレイアウトする
+
+		if ((Board::WINNER)winner==Board::ENEMY) candidates[idx].winCount++;//勝利していたら勝利カウントを増やす
+		if ((Board::WINNER)winner == Board::PLAYER) candidates[idx].loseCount++;//敗北していたら敗北カウントを増やす
 		candidates[idx].playCount++;//プレイ回数を増やす
 	}
 
 	//最も勝率の高い手を選ぶ
 	PlayOutMass bestMass;
-	float best_rate = -1;
+	float bestScore = -1;
 
 	for (int i = 0; i < candidates.size(); i++)
 	{
 		if (candidates[i].playCount == 0) continue;//一度も置いていないマスは飛ばす
 
-		float rate = (float)candidates[i].winCount / candidates[i].playCount;
+		//勝率を求める
+		float winRate = (float)candidates[i].winCount / candidates[i].playCount;
 
-		if (rate > best_rate)//最大値を更新
+		//引き分け率を求める
+		int drawCount = candidates[i].playCount - candidates[i].loseCount - candidates[i].winCount;
+		float drawRate = (float)drawCount / candidates[i].playCount;
+
+		//勝率と引き分け率をもとにスコアを算出
+		float score = winRate * winCoefficient + drawRate * drawCoefficient;
+
+		if (score > bestScore)//最大値を更新
 		{
-			best_rate = rate;
+			bestScore = score;
 			bestMass = candidates[i];
 		}
 	}
 
-	if (best_rate < 0) return false;//一度もプレイアウトしていなくて最大勝率が初期値(-1)のままの場合
+	if (bestScore == -1) return false;//一度もプレイアウトしていなくて最大勝率が初期値(-1)のままの場合
+
+	std::cout << bestScore << "," << bestMass.x << "," << bestMass.y << std::endl;
 
 	return b.mass_[bestMass.y][bestMass.x].put(Mass::ENEMY);
 }
@@ -581,6 +599,7 @@ int main()
 				// AI
 				if (!game->think()) {
 					show_end_message(Board::WINNER::PLAYER);// 投了
+					break;
 				}
 				std::cout << std::endl;
 			}
