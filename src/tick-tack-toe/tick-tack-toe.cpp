@@ -34,6 +34,7 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_MONTECARLO_TREE = 1,
 	};
 
 	static AI* createAi(type type);
@@ -48,10 +49,25 @@ public:
 	bool think(Board& b);
 };
 
+class AI_montecarlo_tree : public AI {
+private:
+	static int select_mass(int n, int* a_count, int* a_wins);
+	double evaluate(bool all_search, int count, Board& b, Mass::status current, int& best_x, int& best_y);
+
+public:
+	AI_montecarlo_tree() {}
+	~AI_montecarlo_tree() {}
+
+	bool think(Board& b);
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
 		// case TYPE_ORDERED:
+	case TYPE_MONTECARLO_TREE:
+		return new AI_montecarlo_tree();
+
 	default:
 		return new AI_ordered();
 		break;
@@ -63,6 +79,7 @@ AI* AI::createAi(type type)
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_montecarlo_tree;
 
 public:
 	enum WINNER {
@@ -71,10 +88,11 @@ public:
 		ENEMY,
 		DRAW,
 	};
-private:
+
 	enum {
 		BOARD_SIZE = 3,
 	};
+
 	Mass mass_[BOARD_SIZE][BOARD_SIZE];
 
 public:
@@ -193,12 +211,150 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
+int AI_montecarlo_tree::select_mass(int n, int* a_count, int* a_wins)
+{
+	int total = 0;
+	
+	for (int i = 0; i < n; i++)
+		total += 10000 * (a_wins[i] + 1) / (a_count[i] + 1);
 
+	if (total <= 0) return -1;
+
+	int r = rand() % total;
+
+	for (int i = 0; i < n; i++)
+	{
+		r -= 10000 * (a_wins[i] + 1) / (a_count[i] + 1);
+
+		if (r < 0) return i;
+	}
+
+	return -1;
+}
+
+double AI_montecarlo_tree::evaluate(bool all_search, int sim_count, Board& board, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+
+	int r = board.calc_result();
+	if (r == current) return +100;
+	if (r == next) return -100;
+	if (r == Board::DRAW) return 0;
+
+	char x_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	char y_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+
+	int wins[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int count[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	double scores[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int blank_mass_num = 0;
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+	{
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = board.mass_[y][x];
+
+			if (m.getStatus() == Mass::BLANK)
+			{
+				x_table[blank_mass_num] = x;
+				y_table[blank_mass_num] = y;
+
+				wins[blank_mass_num] = count[blank_mass_num] = 0;
+				scores[blank_mass_num] = -1;
+				blank_mass_num++;
+			}
+		}
+	}
+
+	if (all_search)
+	{
+		for (int i = 0; i < sim_count; i++)
+		{
+			int idx = select_mass(blank_mass_num, count, wins);
+
+			if (idx < 0) break;
+
+			Mass& m = board.mass_[y_table[idx]][x_table[idx]];
+
+			m.setStatus(current);
+			int dummy;
+			double score = -evaluate(false, 0, board, next, dummy, dummy);
+			m.setStatus(Mass::BLANK);
+
+			if (0 < score)
+			{
+				wins[idx]++;
+				count[idx]++;
+			}
+
+			else count[idx]++;
+
+			if (sim_count / 10 < count[idx] && 10 < sim_count)
+			{
+				m.setStatus(current);
+				scores[idx] = 100 - evaluate(true, (int)sqrt(sim_count), board, next, dummy, dummy);
+				m.setStatus(Mass::BLANK);
+				wins[idx] = -1;
+			}
+		}
+
+		double score_max = -9999;
+
+		for (int idx = 0; idx < blank_mass_num; idx++)
+		{
+			double uct_score;
+
+			if (wins[idx] == -1) uct_score = scores[idx];
+
+			else if (count[idx] == 0) uct_score = 1e9;
+
+			else
+			{
+				double win_rate = static_cast<double>(wins[idx]) / count[idx];
+				double exploration = sqrt(log(sim_count + 1.0) / (count[idx] + 1));
+
+				uct_score = win_rate + sqrt(2.0) * exploration;
+			}
+
+			if (score_max < uct_score)
+			{
+				score_max = uct_score;
+				best_x = x_table[idx];
+				best_y = y_table[idx];
+			}
+			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << uct_score << "% (win:" << wins[idx] << "/" << count[idx] << ")\n";
+		}
+
+		return score_max;
+	}
+
+	int idx = rand() % blank_mass_num;
+	Mass& m = board.mass_[y_table[idx]][x_table[idx]];
+	m.setStatus(current);
+	int dummy;
+	double score = -evaluate(false, 0, board, next, dummy, dummy);
+	m.setStatus(Mass::BLANK);
+
+	return score;
+}
+
+bool AI_montecarlo_tree::think(Board& b)
+{
+	int best_x = -1, best_y = -1;
+
+	evaluate(true, 10000, b, Mass::ENEMY, best_x, best_y);
+
+	if (best_x < 0) return false;
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
 
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ORDERED;
+	//const AI::type ai_type = AI::TYPE_ORDERED;
+	const AI::type ai_type = AI::TYPE_MONTECARLO_TREE;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
