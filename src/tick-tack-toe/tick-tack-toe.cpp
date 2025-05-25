@@ -212,9 +212,9 @@ int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best
 	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
 	//死活判定
 	int r = b.calc_result();
-	if (r == current) return +10000;
-	if (r == next) return -10000;
-	if (r == Board::DRAW) return 0;
+	if (r == current) return +10000;//受け取り手の勝ち
+	if (r == next) return -10000;//受け取り手のまけ
+	if (r == Board::DRAW) return 0;//ひきわけ
 
 	int score_max = -10001;
 
