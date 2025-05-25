@@ -10,7 +10,9 @@
 
 # 工夫点
 
-* 【行ったことをここに書く】
+* MiniMax法を使用してAIを強くしました。
+すべてのマスを探索して、その結果を得点として、最適なマスを選んでコマを起きます。
+そのため、プレイヤーが勝ちそうなときは、プレイヤーを妨害するように、AIが勝つときはAIが活用にしてコマを起きます。
 
 # 取り組み方
 * 本プロジェクトをforkして、取り組んでください。
@@ -19,6 +21,6 @@
 * 可能であれば、速度等を計測して、具体的な効率化度合い、強さを示してください。
 * 納得できるところまでできたところでプルリクを出してください。
 
-[![MSBuild](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml)
+[![MSBuild](https://github.com/Yoshizawa-TPU/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/Yoshizawa-TPU/tick-tack-toe/actions/workflows/msbuild.yml)
 
 （↑のソースコードの「tpu-game-2024」を自分のアカウント名に差し替えてください（２か所））
