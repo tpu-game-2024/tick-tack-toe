@@ -1,7 +1,6 @@
 ﻿#include <memory>
 #include <iostream>
 
-
 class Mass {
 public:
 	enum status {
@@ -34,12 +33,15 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_NEGA_MAX = 0,
+		TYPE_ALPHA_BETA = 0,
+		//TYPE_MONTECARLO = 0,
+		TYPE_MONTECARLO_TREE = 0,
 	};
 
 	static AI* createAi(type type);
 };
 
-// 順番に打ってみる
 class AI_ordered : public AI {
 public:
 	AI_ordered() {}
@@ -48,10 +50,58 @@ public:
 	bool think(Board& b);
 };
 
+class AI_nega_max :public AI {
+private:
+	int evaluate(Board& b, Mass::status current, int &best_x, int &best_y);
+public:
+	AI_nega_max() {}
+	~AI_nega_max() {}
+
+	bool think(Board& b);
+};
+
+class AI_alpha_beta :public AI {
+private:
+	int evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_alpha_beta() {}
+	~AI_alpha_beta() {}
+
+	bool think(Board& b);
+};
+
+//class AI_montecarlo : public AI {
+//private:
+//	static int evaluate(bool first_time, Board& b, Mass::status current, int& best_x, int& best_y);
+//public:
+//	AI_montecarlo(){}
+//	~AI_montecarlo(){}
+//
+//	bool think(Board& b);
+//};
+
+class AI_montecarlo_tree : public AI {
+	//private:
+	static int select_mass(int n, int* a_count, int* a_wins);
+	static int evaluate(bool all_search, int count, Board& b, Mass::status current, int& best_x, int& best_y);
+public:
+	AI_montecarlo_tree() {}
+	~AI_montecarlo_tree() {}
+
+	bool think(Board& b);
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
-		// case TYPE_ORDERED:
+	case 0: TYPE_NEGA_MAX:
+		return new AI_nega_max();
+	case 1: TYPE_ALPHA_BETA:
+		return new AI_alpha_beta();
+	case 2: TYPE_MONTECARLO_TREE:
+		return new AI_montecarlo_tree();
+	//case 3: TYPE_MONTECARLO:
+	//	return new AI_montecarlo();
 	default:
 		return new AI_ordered();
 		break;
@@ -63,6 +113,10 @@ AI* AI::createAi(type type)
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_nega_max;
+	friend class AI_alpha_beta;
+	//friend class AI_montecarlo;
+	friend class AI_montecarlo_tree;
 
 public:
 	enum WINNER {
@@ -71,7 +125,6 @@ public:
 		ENEMY,
 		DRAW,
 	};
-private:
 	enum {
 		BOARD_SIZE = 3,
 	};
@@ -79,7 +132,7 @@ private:
 
 public:
 	Board() {
-		//		mass_[0][0].setStatus(Mass::ENEMY); mass_[0][1].setStatus(Mass::PLAYER); 
+		//mass_[0][0].setStatus(Mass::ENEMY); mass_[0][1].setStatus(Mass::PLAYER); 
 	}
 	Board::WINNER calc_result() const
 	{
@@ -193,12 +246,54 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
+bool AI_nega_max::think(Board& b)
+{
+	int best_x = -1, best_y;
+	evaluate(b, Mass::ENEMY, best_x, best_y);
+	if (best_x < 0)
+	{
+		return false;
+	}
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
 
+bool AI_alpha_beta::think(Board& b)
+{
+	int best_x, best_y;
+
+	if (evaluate(-10000, 10000, b, Mass::ENEMY, best_x, best_y) <= -9999)
+	{
+		return false; //打てる手なし
+	}
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
+
+//bool AI_montecarlo::think(Board& b)
+//{
+//	int best_x = -1, best_y;
+//
+//	evaluate(true, b, Mass::ENEMY, best_x, best_y);
+//
+//	if (best_x < 0) return false; //打てる手なし
+//
+//	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+//}
+
+bool AI_montecarlo_tree::think(Board& b)
+{
+	int best_x = -1, best_y;
+
+	evaluate(true, 10000, b, Mass::ENEMY, best_x, best_y);
+
+	if (best_x < 0) return false; //打てる手なし
+
+	return b.mass_[best_y][best_x].put(Mass::ENEMY);
+}
 
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ORDERED;
+	const AI::type ai_type = AI::TYPE_MONTECARLO_TREE;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
@@ -234,9 +329,6 @@ public:
 	}
 };
 
-
-
-
 void show_start_message()
 {
 	std::cout << "========================" << std::endl;
@@ -259,6 +351,278 @@ void show_end_message(Board::WINNER winner)
 		std::cout << "Draw" << std::endl;
 	}
 	std::cout << std::endl;
+}
+
+int AI_nega_max::evaluate(Board& b, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+	//死活判定
+	int r = b.calc_result();
+	if (r == current) return +10000; //呼び出し側の勝ち
+	if (r == next) return -10000; //呼び出し側の負け
+	if (r == Board::DRAW) return 0; //引き分け
+
+	int score_max = -10001; //打たないのは最悪
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK) continue;
+
+			m.setStatus(current); //次の手を打つ
+			int dummy;
+			int score = -evaluate(b, next, dummy, dummy);
+			m.setStatus(Mass::BLANK); //手を戻す
+
+			if (score_max < score)
+			{
+				score_max = score;
+				best_x = x;
+				best_y = y;
+			}
+		}
+
+	return score_max;
+}
+
+int AI_alpha_beta::evaluate(int alpha, int beta, Board& b, Mass::status current, int& best_x, int& best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+	//死活判定
+	int r = b.calc_result();
+	if (r == current) return +10000; //呼び出し側の勝ち
+	if (r == next) return -10000; //呼び出し側の負け
+	if (r == Board::DRAW) return 0; //引き分け
+
+	int score_max = -9999; //打たないで投了
+
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK) continue;
+
+			m.setStatus(current); //次の手を打つ
+			int dummy;
+			int score = -evaluate(-beta, -alpha, b, next, dummy, dummy);
+			m.setStatus(Mass::BLANK); //手を戻す
+
+			if (beta < score)
+			{
+				return (score_max < score) ? score : score_max; //最悪の値より悪い
+			}
+			if (score_max < score)
+			{
+				score_max = score;
+				alpha = (alpha < score_max) ? score_max : alpha; //α値を更新
+				best_x = x;
+				best_y = y;
+			}
+		}
+	return score_max;
+}
+
+//int AI_montecarlo::evaluate(bool first_time, Board& b, Mass::status current, int& best_x, int& best_y)
+//{
+//	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+//	//死活判定
+//	int r = b.calc_result();
+//	if (r == current) return +10000; //呼び出し側の勝ち
+//	if (r == next) return -10000; //呼び出し側の負け
+//	if (r == Board::DRAW) return 0; //引き分け
+//
+//	char x_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+//	char y_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+//	int wins[Board::BOARD_SIZE * Board::BOARD_SIZE]; //勝利数
+//	int loses[Board::BOARD_SIZE * Board::BOARD_SIZE]; //敗北数
+//	int blank_mass_num = 0;
+//
+//	//空いているマスの数を数え、配列として位置を確保する
+//	for (int y = 0; y < Board::BOARD_SIZE; y++)
+//		for (int x = 0; x < Board::BOARD_SIZE; x++)
+//		{
+//			Mass& m = b.mass_[y][x];
+//			if (m.getStatus() != Mass::BLANK)
+//			{
+//				x_table[blank_mass_num] = x;
+//				y_table[blank_mass_num] = y; wins[blank_mass_num] = loses[blank_mass_num] = 0;
+//				blank_mass_num++;
+//			}
+//		}
+//	if (first_time)
+//	{
+//		//一番上の階層でランダムに指すのを繰り返す
+//		for (int i = 0; i < 10000; i++)
+//		{
+//			int idx = rand() % blank_mass_num;
+//			Mass& m = b.mass_[y_table[idx]][x_table[idx]];
+//
+//			m.setStatus(current); //次の手を打つ
+//			int dummy;
+//			int score = -evaluate(false, b, next, dummy, dummy);
+//			m.setStatus(Mass::BLANK); //手を戻す
+//
+//			if (0 <= score)
+//			{
+//				wins[idx]++;
+//			}
+//			else
+//			{
+//				loses[idx]++;
+//			}
+//		}
+//		int score_max = -9999; //打たないで投了
+//		for (int idx = 0; idx < blank_mass_num; idx++)
+//		{
+//			int score = wins[idx] + loses[idx];
+//			if (0 != score)
+//			{
+//				score = 100 * wins[idx] / score; //勝率
+//			}
+//			if (score_max < score)
+//			{
+//				score_max = score;
+//				best_x = x_table[idx];
+//				best_y = y_table[idx];
+//			}
+//			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << score << "% (win:" << wins;
+//		}
+//
+//		return score_max;
+//	}
+//	//上位でない層はどんどん適当に打っていく
+//	int idx = rand() % blank_mass_num;
+//	Mass& m = b.mass_[y_table[idx]][x_table[idx]];
+//	m.setStatus(current); //次の手を打つ
+//	int dummy;
+//	int score = -evaluate(false, b, next, dummy, dummy);
+//
+//	return score;
+//}
+
+int AI_montecarlo_tree::select_mass(int n, int* a_count, int* a_wins)
+{
+	int total = 0;
+	for (int i = 0; i < n; i++)
+	{
+		total += 10000 * (a_wins[i] + 1) / (a_count[i] + 1); //0のときにも確率があるように+1する
+	}
+	if (total <= 0)
+	{
+		return -1;
+	}
+
+	int r = rand() % total;
+	for (int i = 0; i < n; i++)
+	{
+		r -= 10000 * (a_wins[i] + 1) / (a_count[i] + 1);
+		if (r < 0)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+int AI_montecarlo_tree::evaluate(bool all_search, int sim_count, Board &b, Mass::status current, int &best_x, int &best_y)
+{
+	Mass::status next = (current == Mass::ENEMY) ? Mass::PLAYER : Mass::ENEMY;
+	//死活判定
+	int r = b.calc_result();
+	if (r == current) return +100; //呼び出し側の勝ち
+	if (r == next) return -100; //呼び出し側の負け
+	if (r == Board::DRAW) return 0; //引き分け
+
+	char x_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	char y_table[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int wins[Board::BOARD_SIZE * Board::BOARD_SIZE]; //勝利数
+	int count[Board::BOARD_SIZE * Board::BOARD_SIZE]; //敗北数
+	int scores[Board::BOARD_SIZE * Board::BOARD_SIZE];
+	int blank_mass_num = 0;
+
+	//空いているマスの数を数え、配列として位置を確保する
+	for (int y = 0; y < Board::BOARD_SIZE; y++)
+		for (int x = 0; x < Board::BOARD_SIZE; x++)
+		{
+			Mass& m = b.mass_[y][x];
+			if (m.getStatus() != Mass::BLANK)
+			{
+				x_table[blank_mass_num] = x;
+				y_table[blank_mass_num] = y; 
+				wins[blank_mass_num] = count[blank_mass_num] = 0;
+				scores[blank_mass_num] = -1;
+				blank_mass_num++;
+			}
+		}
+	if (all_search)
+	{
+		//一番上の階層でランダムに指すのを繰り返す
+		for (int i = 0; i < sim_count; i++)
+		{
+			int idx = select_mass(blank_mass_num, count, wins);
+			if (idx < 0) break;
+			Mass& m = b.mass_[y_table[idx]][x_table[idx]];
+
+			m.setStatus(current); //次の手を打つ
+			int dummy;
+			int score = -evaluate(false, 0, b, next, dummy, dummy);
+			m.setStatus(Mass::BLANK); //手を戻す
+
+			if (0 <= score)
+			{
+				wins[idx]++;
+				count[idx]++;
+			}
+			else
+			{
+				count[idx]++;
+			}
+			if (sim_count / 10 < count[idx] && 10 < sim_count)
+			{
+				m.setStatus(current);
+				scores[idx] = 100 - evaluate(true, (int)sqrt(sim_count), b, next, dummy, dummy);
+				m.setStatus(Mass::BLANK);
+				wins[idx] = -1;
+			}
+		}
+		int score_max = -9999; //打たないで投了
+		for (int idx = 0; idx < blank_mass_num; idx++)
+		{
+			int score;
+			if (-1 == wins[idx])
+			{
+				score = scores[idx]; //枝分かれした
+			}
+			else if (0 == count[idx])
+			{
+				score = 0; //一度も通らなかった
+			}
+			else
+			{
+				double c = 1. * sqrt(2 * log(sim_count) / count[idx]);
+				score = 100 * wins[idx] / count[idx] + (int)(c); //勝率
+			}
+			if (score_max < score)
+			{
+				score_max = score;
+				best_x = x_table[idx];
+				best_y = y_table[idx];
+			}
+			std::cout << x_table[idx] + 1 << (char)('a' + y_table[idx]) << " " << score << "% (win:" << wins;
+		}
+
+		return score_max;
+	}
+	//上位でない層はどんどん適当に打っていく
+	int idx = rand() % blank_mass_num;
+	Mass& m = b.mass_[y_table[idx]][x_table[idx]];
+	m.setStatus(current); //次の手を打つ
+	int dummy;
+	int score = -evaluate(false, 0, b, next, dummy, dummy);
+	m.setStatus(Mass::BLANK); //手を戻す
+
+	return score;
 }
 
 int main()
