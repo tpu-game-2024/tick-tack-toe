@@ -1,7 +1,6 @@
 ﻿#include <memory>
 #include <iostream>
 
-
 class Mass {
 public:
 	enum status {
@@ -34,12 +33,12 @@ public:
 public:
 	enum type {
 		TYPE_ORDERED = 0,
+		TYPE_SMART = 1,
 	};
 
 	static AI* createAi(type type);
 };
 
-// 順番に打ってみる
 class AI_ordered : public AI {
 public:
 	AI_ordered() {}
@@ -48,21 +47,35 @@ public:
 	bool think(Board& b);
 };
 
+class AI_smart : public AI {
+public:
+	AI_smart() {}
+	~AI_smart() {}
+
+	bool think(Board& b);
+
+private:
+	bool win(Board& b, int& x, int& y);
+	bool guard(Board& b, int& x, int& y);
+	bool center(Board& b);
+	bool empty(Board& b);
+};
+
 AI* AI::createAi(type type)
 {
 	switch (type) {
-		// case TYPE_ORDERED:
+	case TYPE_SMART:
+		return new AI_smart();
+	case TYPE_ORDERED:
 	default:
 		return new AI_ordered();
-		break;
 	}
-
-	return nullptr;
 }
 
 class Board
 {
 	friend class AI_ordered;
+	friend class AI_smart;
 
 public:
 	enum WINNER {
@@ -78,9 +91,8 @@ private:
 	Mass mass_[BOARD_SIZE][BOARD_SIZE];
 
 public:
-	Board() {
-		//		mass_[0][0].setStatus(Mass::ENEMY); mass_[0][1].setStatus(Mass::PLAYER); 
-	}
+	Board() {}
+
 	Board::WINNER calc_result() const
 	{
 		// 縦横斜めに同じキャラが入っているか検索
@@ -102,7 +114,7 @@ public:
 			for (; y < BOARD_SIZE; y++) {
 				if (mass_[y][x].getStatus() != winner) break;
 			}
-			if (y == BOARD_SIZE) { return(Board::WINNER) winner; }
+			if (y == BOARD_SIZE) { return(Board::WINNER)winner; }
 		}
 		// 斜め
 		{
@@ -166,8 +178,6 @@ public:
 					std::cout << "　";
 					break;
 				default:
-//					if (mass_[y][x].isListed(Mass::CLOSE)) std::cout << "＋"; else
-//					if (mass_[y][x].isListed(Mass::OPEN) ) std::cout << "＃"; else
 					std::cout << "　";
 				}
 			}
@@ -193,19 +203,99 @@ bool AI_ordered::think(Board& b)
 	return false;
 }
 
+bool AI_smart::think(Board& b)
+{
+	int x, y;
 
+	if (win(b, x, y)) {
+		return b.mass_[y][x].put(Mass::ENEMY);
+	}
+
+	if (guard(b, x, y)) {
+		return b.mass_[y][x].put(Mass::ENEMY);
+	}
+
+	if (center(b)) {
+		return true;
+	}
+	return empty(b);
+}
+
+bool AI_smart::win(Board& b, int& winX, int& winY)
+{
+	for (int y = 0; y < 3; y++) {
+		for (int x = 0; x < 3; x++) {
+			if (b.mass_[y][x].getStatus() == Mass::BLANK) {
+				b.mass_[y][x].setStatus(Mass::ENEMY);
+
+				Board::WINNER result = b.calc_result();
+
+				b.mass_[y][x].setStatus(Mass::BLANK);
+
+				if (result == Board::ENEMY) {
+					winX = x;
+					winY = y;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+bool AI_smart::guard(Board& b, int& blockX, int& blockY)
+{
+	for (int y = 0; y < 3; y++) {
+		for (int x = 0; x < 3; x++) {
+			if (b.mass_[y][x].getStatus() == Mass::BLANK) {
+				b.mass_[y][x].setStatus(Mass::PLAYER);
+
+				Board::WINNER result = b.calc_result();
+
+				b.mass_[y][x].setStatus(Mass::BLANK);
+
+				if (result == Board::PLAYER) {
+					blockX = x;
+					blockY = y;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+bool AI_smart::center(Board& b)
+{
+	if (b.mass_[1][1].getStatus() == Mass::BLANK) {
+		return b.mass_[1][1].put(Mass::ENEMY);
+	}
+	return false;
+}
+
+bool AI_smart::empty(Board& b)
+{
+	for (int y = 0; y < 3; y++) {
+		for (int x = 0; x < 3; x++) {
+			if (b.mass_[y][x].put(Mass::ENEMY)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 class Game
 {
 private:
-	const AI::type ai_type = AI::TYPE_ORDERED;
+	AI::type ai_type;
 
 	Board board_;
 	Board::WINNER winner_ = Board::NOT_FINISED;
 	AI* pAI_ = nullptr;
 
 public:
-	Game() {
+	Game(AI::type type = AI::TYPE_SMART) : ai_type(type) {
 		pAI_ = AI::createAi(ai_type);
 	}
 	~Game() {
@@ -215,7 +305,6 @@ public:
 	bool put(int x, int y) {
 		bool success = board_.put(x, y);
 		if (success) winner_ = board_.calc_result();
-
 		return success;
 	}
 
@@ -234,15 +323,15 @@ public:
 	}
 };
 
-
-
-
 void show_start_message()
 {
 	std::cout << "========================" << std::endl;
 	std::cout << "       GAME START       " << std::endl;
 	std::cout << std::endl;
 	std::cout << "input position likes 1 a" << std::endl;
+	std::cout << "AI 難易度:" << std::endl;
+	std::cout << "0: 簡単" << std::endl;
+	std::cout << "1: 一般）" << std::endl;
 	std::cout << "========================" << std::endl;
 }
 
@@ -263,17 +352,20 @@ void show_end_message(Board::WINNER winner)
 
 int main()
 {
-	for (;;) {// 無限ループ
+	for (;;) {
 		show_start_message();
 
-		// initialize
+		int aiLevel;
+		std::cout << "AI難易度 (0-1): ";
+		std::cin >> aiLevel;
+		if (aiLevel < 0 || aiLevel > 1) aiLevel = 1;
+
 		unsigned int turn = 0;
-		std::shared_ptr<Game> game(new Game());
+		std::shared_ptr<Game> game(new Game((AI::type)aiLevel));
 
 		while (1) {
-			game->show();// 盤面表示
+			game->show();
 
-			// 勝利判定
 			Board::WINNER winner = game->is_finised();
 			if (winner) {
 				show_end_message(winner);
@@ -281,7 +373,6 @@ int main()
 			}
 
 			if (0 == turn) {
-				// user input
 				char col[1], row[1];
 				do {
 					std::cout << "? ";
@@ -289,13 +380,12 @@ int main()
 				} while (!game->put(row[0] - '1', col[0] - 'a'));
 			}
 			else {
-				// AI
 				if (!game->think()) {
-					show_end_message(Board::WINNER::PLAYER);// 投了
+					show_end_message(Board::WINNER::PLAYER);
+					break;
 				}
 				std::cout << std::endl;
 			}
-			// プレイヤーとAIの切り替え
 			turn = 1 - turn;
 		}
 	}

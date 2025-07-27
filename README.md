@@ -10,7 +10,11 @@
 
 # 工夫点
 
-* 【行ったことをここに書く】
+* AIの難易度を追加
+* ①勝てる手を狙う
+* ②勝たせない様に弱点を守る
+* ③有利な場所取り（ど真ん中）
+* ④どこでも
 
 # 取り組み方
 * 本プロジェクトをforkして、取り組んでください。
@@ -19,6 +23,6 @@
 * 可能であれば、速度等を計測して、具体的な効率化度合い、強さを示してください。
 * 納得できるところまでできたところでプルリクを出してください。
 
-[![MSBuild](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/tpu-game-2024/tick-tack-toe/actions/workflows/msbuild.yml)
+[![MSBuild](https://github.com/diceroll5656/tick-tack-toe/actions/workflows/msbuild.yml/badge.svg)](https://github.com/diceroll5656/tick-tack-toe/actions/workflows/msbuild.yml)
 
 （↑のソースコードの「tpu-game-2024」を自分のアカウント名に差し替えてください（２か所））
